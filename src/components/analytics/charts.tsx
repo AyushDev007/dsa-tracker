@@ -68,8 +68,8 @@ function WeeklyTrend({
         subtitle="Last 12 weeks — new problems against revisions"
         action={
           <div className="flex items-center gap-3">
-            <LegendSwatch color={SERIES.solved} label={SERIES.solved.label} />
-            <LegendSwatch color={SERIES.revised} label={SERIES.revised.label} />
+            <LegendSwatch varName="--series-solved" label={SERIES.solved.label} />
+            <LegendSwatch varName="--series-revised" label={SERIES.revised.label} />
           </div>
         }
       />
@@ -141,7 +141,6 @@ function WeeklyTrend({
           </ResponsiveContainer>
         )}
       </div>
-      <SeriesVars />
     </Card>
   );
 }
@@ -177,31 +176,12 @@ function TrendTooltip({
   );
 }
 
-function LegendSwatch({
-  color,
-  label,
-}: {
-  color: { light: string; dark: string };
-  label: string;
-}) {
+function LegendSwatch({ varName, label }: { varName: string; label: string }) {
   return (
     <span className="flex items-center gap-1.5 text-[0.6875rem] text-[var(--fg-muted)]">
-      <span
-        className="h-0.5 w-4 rounded-full"
-        style={{ background: label === SERIES.solved.label ? color.light : color.light }}
-      />
+      <span className="h-0.5 w-4 rounded-full" style={{ background: `var(${varName})` }} />
       {label}
     </span>
-  );
-}
-
-/** Series hexes as CSS variables so light and dark each get their own step. */
-function SeriesVars() {
-  return (
-    <style>{`
-      .dark { --series-solved: ${SERIES.solved.dark}; --series-revised: ${SERIES.revised.dark}; }
-      :root { --series-solved: ${SERIES.solved.light}; --series-revised: ${SERIES.revised.light}; }
-    `}</style>
   );
 }
 

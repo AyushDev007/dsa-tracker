@@ -36,6 +36,13 @@
   --heat-2: oklch(78% 0.11 162);
   --heat-3: oklch(66% 0.14 162);
   --heat-4: oklch(54% 0.15 162);
+
+  /* Chart series. Categorical slots 1 and 2 (blue / orange) — validated for
+     colour-vision-deficiency separation, the lightness band and 3:1 contrast
+     against both surfaces. Difficulty deliberately isn't a colour-coded series:
+     green/amber/red fails CVD separation, so those charts label every row. */
+  --series-solved: #2a78d6;
+  --series-revised: #eb6834;
 }
 
 .dark {
@@ -70,6 +77,10 @@
   --heat-2: oklch(46% 0.11 162);
   --heat-3: oklch(58% 0.14 162);
   --heat-4: oklch(72% 0.16 162);
+
+  /* Same two hues, re-stepped for the dark surface rather than flipped. */
+  --series-solved: #3987e5;
+  --series-revised: #d95926;
 }
 
 @theme inline {
