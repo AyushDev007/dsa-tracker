@@ -1,0 +1,29 @@
+node_modules
+.next
+out
+build
+.DS_Store
+*.pem
+
+# env
+.env
+.env*.local
+!.env.example
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# vercel
+.vercel
+
+# prisma
+prisma/*.db
+prisma/*.db-journal
+.postgres/

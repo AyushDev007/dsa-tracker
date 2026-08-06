@@ -1,0 +1,354 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ───────────────────────────────────────────────────────── design tokens ── */
+
+:root {
+  --bg: oklch(99% 0.003 250);
+  --bg-subtle: oklch(97.2% 0.004 250);
+  --surface: oklch(100% 0 0);
+  --surface-2: oklch(97.8% 0.004 250);
+  --border: oklch(91.5% 0.006 250);
+  --border-strong: oklch(85% 0.008 250);
+
+  --fg: oklch(21% 0.015 262);
+  --fg-muted: oklch(50% 0.015 262);
+  --fg-subtle: oklch(63% 0.012 262);
+
+  --accent: oklch(58% 0.19 262);
+  --accent-fg: oklch(99% 0 0);
+  --accent-soft: oklch(95% 0.03 262);
+
+  --easy: oklch(64% 0.14 165);
+  --medium: oklch(72% 0.15 75);
+  --hard: oklch(62% 0.19 20);
+
+  --easy-soft: oklch(95% 0.04 165);
+  --medium-soft: oklch(95.5% 0.05 85);
+  --hard-soft: oklch(95.5% 0.035 20);
+
+  --ring: oklch(58% 0.19 262 / 0.45);
+  --shadow-color: 250 20% 40%;
+
+  --heat-0: oklch(93.5% 0.005 250);
+  --heat-1: oklch(87% 0.06 162);
+  --heat-2: oklch(78% 0.11 162);
+  --heat-3: oklch(66% 0.14 162);
+  --heat-4: oklch(54% 0.15 162);
+}
+
+.dark {
+  --bg: oklch(17.5% 0.012 262);
+  --bg-subtle: oklch(20% 0.014 262);
+  --surface: oklch(21.5% 0.015 262);
+  --surface-2: oklch(25% 0.016 262);
+  --border: oklch(29% 0.016 262);
+  --border-strong: oklch(36% 0.018 262);
+
+  --fg: oklch(96% 0.005 250);
+  --fg-muted: oklch(72% 0.012 258);
+  --fg-subtle: oklch(58% 0.014 258);
+
+  --accent: oklch(70% 0.16 262);
+  --accent-fg: oklch(16% 0.02 262);
+  --accent-soft: oklch(30% 0.06 262);
+
+  --easy: oklch(74% 0.15 165);
+  --medium: oklch(80% 0.14 80);
+  --hard: oklch(70% 0.17 20);
+
+  --easy-soft: oklch(28% 0.05 165);
+  --medium-soft: oklch(30% 0.06 80);
+  --hard-soft: oklch(29% 0.06 20);
+
+  --ring: oklch(70% 0.16 262 / 0.5);
+  --shadow-color: 262 40% 4%;
+
+  --heat-0: oklch(25% 0.012 262);
+  --heat-1: oklch(35% 0.07 162);
+  --heat-2: oklch(46% 0.11 162);
+  --heat-3: oklch(58% 0.14 162);
+  --heat-4: oklch(72% 0.16 162);
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg-subtle: var(--bg-subtle);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-subtle: var(--fg-subtle);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-soft: var(--accent-soft);
+  --color-easy: var(--easy);
+  --color-medium: var(--medium);
+  --color-hard: var(--hard);
+  --color-easy-soft: var(--easy-soft);
+  --color-medium-soft: var(--medium-soft);
+  --color-hard-soft: var(--hard-soft);
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+/* ────────────────────────────────────────────────────────────── base ────── */
+
+* {
+  border-color: var(--border);
+}
+
+html {
+  color-scheme: light;
+  scroll-behavior: smooth;
+}
+html.dark {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--fg);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Slim scrollbars that don't fight the dark theme. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--fg-subtle);
+  background-clip: content-box;
+}
+
+/* ───────────────────────────────────────────────────────── components ───── */
+
+@utility card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.875rem;
+}
+
+@utility surface-hover {
+  transition: background-color 120ms ease, border-color 120ms ease;
+  &:hover {
+    background: var(--surface-2);
+  }
+}
+
+/* Markdown rendering for notes. */
+.prose-notes {
+  color: var(--fg);
+  line-height: 1.7;
+  font-size: 0.9375rem;
+}
+.prose-notes > * + * {
+  margin-top: 0.85em;
+}
+.prose-notes h1,
+.prose-notes h2,
+.prose-notes h3 {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin-top: 1.6em;
+  margin-bottom: 0.5em;
+  line-height: 1.3;
+}
+.prose-notes h1 {
+  font-size: 1.35em;
+}
+.prose-notes h2 {
+  font-size: 1.15em;
+}
+.prose-notes h3 {
+  font-size: 1em;
+}
+.prose-notes ul,
+.prose-notes ol {
+  padding-left: 1.35em;
+}
+.prose-notes ul {
+  list-style: disc;
+}
+.prose-notes ol {
+  list-style: decimal;
+}
+.prose-notes li + li {
+  margin-top: 0.3em;
+}
+.prose-notes a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.prose-notes code {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  padding: 0.1em 0.35em;
+  border-radius: 0.35rem;
+}
+.prose-notes pre {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+  padding: 0.9rem 1rem;
+  overflow-x: auto;
+  font-size: 0.85em;
+}
+.prose-notes pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 1em;
+}
+.prose-notes blockquote {
+  border-left: 3px solid var(--border-strong);
+  padding-left: 1em;
+  color: var(--fg-muted);
+}
+.prose-notes table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9em;
+}
+.prose-notes th,
+.prose-notes td {
+  border: 1px solid var(--border);
+  padding: 0.45em 0.7em;
+  text-align: left;
+}
+.prose-notes th {
+  background: var(--surface-2);
+  font-weight: 600;
+}
+.prose-notes hr {
+  border-top: 1px solid var(--border);
+}
+
+/* highlight.js — themed from our own tokens so it matches in light and dark. */
+.hljs {
+  color: var(--fg);
+  background: transparent;
+}
+.hljs-comment,
+.hljs-quote {
+  color: var(--fg-subtle);
+  font-style: italic;
+}
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-section,
+.hljs-doctag,
+.hljs-type,
+.hljs-name,
+.hljs-strong {
+  color: oklch(62% 0.19 300);
+}
+.dark .hljs-keyword,
+.dark .hljs-selector-tag,
+.dark .hljs-literal,
+.dark .hljs-section,
+.dark .hljs-doctag,
+.dark .hljs-type,
+.dark .hljs-name,
+.dark .hljs-strong {
+  color: oklch(78% 0.14 310);
+}
+.hljs-string,
+.hljs-title,
+.hljs-attr,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-addition {
+  color: oklch(55% 0.13 155);
+}
+.dark .hljs-string,
+.dark .hljs-title,
+.dark .hljs-attr,
+.dark .hljs-symbol,
+.dark .hljs-bullet,
+.dark .hljs-addition {
+  color: oklch(76% 0.13 160);
+}
+.hljs-number,
+.hljs-meta,
+.hljs-built_in,
+.hljs-builtin-name,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-link {
+  color: oklch(58% 0.15 45);
+}
+.dark .hljs-number,
+.dark .hljs-meta,
+.dark .hljs-built_in,
+.dark .hljs-builtin-name,
+.dark .hljs-variable,
+.dark .hljs-template-variable,
+.dark .hljs-link {
+  color: oklch(80% 0.12 65);
+}
+.hljs-title.function_,
+.hljs-function .hljs-title {
+  color: oklch(55% 0.16 250);
+}
+.dark .hljs-title.function_,
+.dark .hljs-function .hljs-title {
+  color: oklch(76% 0.13 250);
+}
+
+/* Fade-in used by list/grid content so navigation never feels like a jump cut. */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-rise {
+  animation: rise 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

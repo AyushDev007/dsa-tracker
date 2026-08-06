@@ -1,0 +1,303 @@
+// DSA Tracker — data model
+//
+// Provider is PostgreSQL everywhere (local Docker, Neon in production) so there
+// is never a dev/prod schema drift.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ───────────────────────────────────────────────────────────── Auth.js models
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+
+  /// Public profile slug: /u/<handle>. Null until the user picks one.
+  handle           String? @unique
+  /// LeetCode username used by the sync job. Public data only.
+  leetcodeUsername String?
+  /// Opt-in: makes /u/<handle> readable by anyone.
+  isPublic         Boolean @default(false)
+  /// Problems/day target that drives the goal ring and streak.
+  dailyGoal        Int     @default(3)
+  /// Preferred language for the code editor on the problem page.
+  preferredLanguage String @default("python")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accounts     Account[]
+  sessions     Session[]
+  progress     Progress[]
+  notes        Note[]
+  activityDays ActivityDay[]
+  attempts     Attempt[]
+  leetcodeSync LeetcodeSync?
+
+  @@index([handle])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ───────────────────────────────────────────────────────── Problem catalogue
+
+model Topic {
+  id       String    @id @default(cuid())
+  name     String    @unique
+  slug     String    @unique
+  /// Display order in the sidebar / filter list.
+  position Int       @default(0)
+  problems Problem[]
+}
+
+model Pattern {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  slug        String    @unique
+  description String?
+  position    Int       @default(0)
+  problems    Problem[]
+}
+
+model Company {
+  id       String           @id @default(cuid())
+  name     String           @unique
+  slug     String           @unique
+  problems ProblemCompany[]
+}
+
+model Sheet {
+  id          String         @id @default(cuid())
+  name        String         @unique
+  slug        String         @unique
+  description String?
+  position    Int            @default(0)
+  problems    SheetProblem[]
+}
+
+model Problem {
+  id         String @id @default(cuid())
+  /// LeetCode URL slug — stable natural key used by seeds and the LC sync.
+  slug       String @unique
+  title      String
+  /// LeetCode's user-facing question number.
+  leetcodeId Int    @unique
+  url        String
+  difficulty String // EASY | MEDIUM | HARD
+  /// Acceptance rate as a percentage, e.g. 54.3
+  acceptance Float  @default(0)
+  isPremium  Boolean @default(false)
+  /// Suggested study position inside its topic.
+  position   Int    @default(999)
+
+  topicId   String
+  patternId String
+  topic     Topic   @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  pattern   Pattern @relation(fields: [patternId], references: [id], onDelete: Cascade)
+
+  companies ProblemCompany[]
+  sheets    SheetProblem[]
+  progress  Progress[]
+  notes     Note[]
+  attempts  Attempt[]
+
+  @@index([topicId])
+  @@index([patternId])
+  @@index([difficulty])
+}
+
+model ProblemCompany {
+  problemId String
+  companyId String
+  problem   Problem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@id([problemId, companyId])
+  @@index([companyId])
+}
+
+model SheetProblem {
+  sheetId   String
+  problemId String
+  position  Int     @default(0)
+  sheet     Sheet   @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  problem   Problem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+
+  @@id([sheetId, problemId])
+  @@index([problemId])
+}
+
+// ───────────────────────────────────────────────────────────── User progress
+
+/// One row per (user, problem). Holds both the status and the spaced-repetition
+/// schedule, because they always change together.
+model Progress {
+  id        String @id @default(cuid())
+  userId    String
+  problemId String
+
+  /// TODO | ATTEMPTED | SOLVED
+  status    String  @default("TODO")
+  /// Starred for quick access.
+  bookmarked Boolean @default(false)
+
+  solvedAt   DateTime?
+  /// Total seconds logged across all attempts.
+  timeSpentSec Int  @default(0)
+  attemptCount Int  @default(0)
+  usedHint     Boolean @default(false)
+
+  // ── spaced repetition ──
+  /// Self-rating on the last solve: 1 = struggled, 2 = ok, 3 = confident.
+  /// Null means never rated.
+  confidence   Int?
+  /// Index into REVIEW_INTERVALS. Advances on a good rating, resets on a bad one.
+  reviewStage  Int       @default(0)
+  /// When this problem re-enters the revision queue. Null = not scheduled.
+  nextReviewAt DateTime?
+  lastReviewAt DateTime?
+  reviewCount  Int       @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  problem Problem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, problemId])
+  @@index([userId, status])
+  @@index([userId, nextReviewAt])
+  @@index([userId, bookmarked])
+}
+
+model Note {
+  id        String @id @default(cuid())
+  userId    String
+  problemId String
+
+  /// Markdown. The "how I thought about it" half.
+  content  String @default("") @db.Text
+  /// The solution the user wants to remember.
+  code     String @default("") @db.Text
+  language String @default("python")
+  /// Free-text complexity notes, e.g. "O(n log n) / O(1)".
+  timeComplexity  String?
+  spaceComplexity String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  problem Problem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, problemId])
+  @@index([userId, updatedAt])
+}
+
+/// One row per solve/revision session — the raw log behind the timer stats.
+model Attempt {
+  id         String   @id @default(cuid())
+  userId     String
+  problemId  String
+  /// SOLVE | REVISION
+  kind       String   @default("SOLVE")
+  durationSec Int     @default(0)
+  solved     Boolean  @default(false)
+  usedHint   Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  problem Problem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([userId, problemId])
+}
+
+/// Pre-aggregated per-day counters. The heatmap reads only this table, so it
+/// stays a single indexed range scan no matter how much history exists.
+model ActivityDay {
+  id      String   @id @default(cuid())
+  userId  String
+  /// Midnight UTC of the day being counted.
+  day     DateTime @db.Date
+  solved  Int      @default(0)
+  revised Int      @default(0)
+  minutes Int      @default(0)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, day])
+  @@index([userId, day])
+}
+
+/// Cached result of the last LeetCode profile sync. Public data only — we never
+/// store credentials, so this can be refreshed from a username alone.
+model LeetcodeSync {
+  id       String @id @default(cuid())
+  userId   String @unique
+  username String
+
+  totalSolved  Int @default(0)
+  easySolved   Int @default(0)
+  mediumSolved Int @default(0)
+  hardSolved   Int @default(0)
+  ranking      Int?
+  contestRating Float?
+
+  /// { "2026-01-01": 3, ... } — LeetCode's own submission calendar.
+  calendar Json?
+  /// Slugs LeetCode reports as accepted, used to auto-mark tracker problems.
+  solvedSlugs Json?
+
+  lastSyncedAt DateTime @default(now())
+  lastError    String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
