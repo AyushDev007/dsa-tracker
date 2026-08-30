@@ -11,7 +11,7 @@ and Auth.js v5.
 
 ## Quick start
 
-Three terminals' worth of commands, but only the first time.
+One-time setup, then a single command to run it.
 
 ```bash
 npm install
@@ -29,43 +29,42 @@ npm approve-scripts prisma @prisma/client @prisma/engines esbuild sharp unrs-res
 cp .env.example .env
 ```
 
-### Start the database
+### Create the database
 
-You need a PostgreSQL 16 database. Pick whichever is least friction:
-
-**A. Zero-install (bundled Postgres).** Runs a real Postgres server out of
-`.postgres/` — no Docker, no admin rights, no cloud account. Leave it running in
-its own terminal.
+This bundles a real PostgreSQL server, so there is nothing to install — no
+Docker, no admin rights, no cloud account. Create the cluster once:
 
 ```bash
 npm run db:local
 ```
 
-**B. Docker.**
-
-```bash
-docker compose up -d
-```
-
-**C. Neon** (also what you'll use in production) — create a free project at
-[neon.tech](https://neon.tech) and paste both connection strings into `.env`:
-`DATABASE_URL` = the pooled string, `DIRECT_URL` = the unpooled one.
-
-All three work with the default `.env`, except Neon which needs its own URLs.
-
-### Create the schema and load the problems
+Leave that running, and in a second terminal load the schema and problems:
 
 ```bash
 npm run setup
 ```
 
-That runs `prisma generate`, pushes the schema and seeds all 311 problems with
-their topics, patterns, companies and sheet memberships.
+Then stop the first terminal with Ctrl+C. You only ever do this once.
+
+> Prefer Docker? `docker compose up -d` works with the same default `.env`.
+> Prefer Neon (what you'll use in production)? Create a free project at
+> [neon.tech](https://neon.tech) and put the pooled string in `DATABASE_URL`
+> and the unpooled one in `DIRECT_URL`.
 
 ### Run it
 
 ```bash
 npm run dev
+```
+
+**One command, one terminal.** `dev` starts the database first if it isn't
+already up (detached, so it survives closing the terminal), then Next.js. If
+`DATABASE_URL` points at a remote database it skips that step entirely.
+
+To shut the database down:
+
+```bash
+npm run db:stop
 ```
 
 Open <http://localhost:3000> and click **Continue as demo user** — a local-only
@@ -216,7 +215,8 @@ deploy. The seed is idempotent — it upserts by slug and never touches user dat
 |---|---|
 | `npm run dev` | Dev server |
 | `npm run build` | Production build (no database needed) |
-| `npm run db:local` | Start the bundled Postgres |
+| `npm run db:local` | Run the bundled Postgres in the foreground (first-time setup) |
+| `npm run db:stop` | Stop the detached Postgres |
 | `npm run setup` | Generate client + push schema + seed problems |
 | `npm run db:seed` | Re-seed the problem catalogue (idempotent) |
 | `npm run db:demo` | Generate demo progress for the first user |
@@ -225,6 +225,30 @@ deploy. The seed is idempotent — it upserts by slug and never touches user dat
 | `npm run problems:build` | Rebuild `data/problems.json` from LeetCode |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run lint` | ESLint |
+
+---
+
+## If it stops working
+
+**Page shows a 500, or "Can't reach database server".** The database isn't
+running. `npm run dev` starts it automatically, so this only happens if the
+app is already running and the database went down separately:
+
+```bash
+npm run db:start
+```
+
+**"No database cluster in .postgres/".** You haven't done the one-time setup.
+Run `npm run db:local` in one terminal and `npm run setup` in another.
+
+**Port 5432 already in use by something else.** Another Postgres is running.
+Either use it (update `DATABASE_URL`) or point this one elsewhere with
+`LOCAL_DB_PORT=5433` plus a matching `DATABASE_URL`.
+
+**Everything looks broken after a crash or a reboot.** Nothing is lost — the
+data lives in `.postgres/`. Just `npm run dev`.
+
+The database log is at `.postgres.log` in the project root.
 
 ---
 
