@@ -13,6 +13,8 @@ and Auth.js v5.
 
 One-time setup, then a single command to run it.
 
+Requires **Node 20.11 or newer**.
+
 ```bash
 npm install
 ```
