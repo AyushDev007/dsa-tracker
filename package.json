@@ -6,7 +6,7 @@
     "dev": "tsx scripts/ensure-db.ts && next dev",
     "dev:only": "next dev",
     "build": "prisma generate && next build",
-    "vercel-build": "prisma generate && prisma migrate deploy && tsx prisma/seed.ts && next build",
+    "vercel-build": "tsx scripts/prepare-env.ts && prisma generate && prisma migrate deploy && tsx prisma/seed.ts && next build",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
