@@ -6,7 +6,6 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { signOut } from "next-auth/react";
 import {
-  Binary,
   LayoutDashboard,
   ListChecks,
   RotateCcw,
@@ -21,6 +20,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/primitives";
 
 const NAV = [
@@ -86,10 +86,7 @@ export function AppShell({
   const sidebarBody = (
     <>
       <div className="flex h-14 items-center gap-2 px-5">
-        <div className="flex size-7 items-center justify-center rounded-lg bg-[var(--accent)] text-[var(--accent-fg)]">
-          <Binary className="size-4" />
-        </div>
-        <span className="font-semibold tracking-tight">DSA Tracker</span>
+        <Logo size="sm" />
       </div>
 
       <div className="mt-2">{nav}</div>

@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { auth, configuredProviders } from "@/auth";
 import { SignInButtons } from "./sign-in-buttons";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { Binary } from "lucide-react";
+import { Logo } from "@/components/logo";
 
 export const metadata = { title: "Sign in" };
 
@@ -37,10 +37,7 @@ export default async function SignInPage({
 
       <div className="relative w-full max-w-sm">
         <Link href="/" className="mb-8 flex items-center justify-center gap-2">
-          <div className="flex size-9 items-center justify-center rounded-xl bg-[var(--accent)] text-[var(--accent-fg)]">
-            <Binary className="size-5" />
-          </div>
-          <span className="text-lg font-semibold tracking-tight">DSA Tracker</span>
+          <Logo size="md" />
         </Link>
 
         <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-xl shadow-black/5">

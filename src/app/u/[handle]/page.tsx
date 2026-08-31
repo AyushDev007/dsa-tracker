@@ -6,9 +6,10 @@ import { getUserStats, getActivity } from "@/lib/queries";
 import { buildHeatmap, computeStreaks } from "@/lib/streaks";
 import { Heatmap } from "@/components/heatmap";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { Logo } from "@/components/logo";
 import { Card, CardHeader, Badge, ProgressBar, Button } from "@/components/ui/primitives";
 import { percent } from "@/lib/utils";
-import { Binary, Flame, Trophy, Lock } from "lucide-react";
+import { Flame, Trophy, Lock } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -183,10 +184,7 @@ function Shell({ children }: { children: React.ReactNode }) {
       <header className="border-b border-[var(--border)]">
         <div className="mx-auto flex h-14 max-w-3xl items-center gap-2 px-5">
           <Link href="/" className="flex items-center gap-2">
-            <div className="flex size-7 items-center justify-center rounded-lg bg-[var(--accent)] text-[var(--accent-fg)]">
-              <Binary className="size-4" />
-            </div>
-            <span className="font-semibold tracking-tight">DSA Tracker</span>
+            <Logo size="sm" />
           </Link>
           <div className="flex-1" />
           <ThemeToggle />

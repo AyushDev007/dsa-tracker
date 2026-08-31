@@ -3,9 +3,9 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { Logo } from "@/components/logo";
 import { Button, Badge } from "@/components/ui/primitives";
 import {
-  Binary,
   Layers,
   RotateCcw,
   Flame,
@@ -74,10 +74,7 @@ export default async function LandingPage() {
     <div className="min-h-dvh">
       <header className="sticky top-0 z-20 border-b border-[var(--border)] bg-[var(--bg)]/85 backdrop-blur-md">
         <div className="mx-auto flex h-14 max-w-6xl items-center gap-2 px-5">
-          <div className="flex size-7 items-center justify-center rounded-lg bg-[var(--accent)] text-[var(--accent-fg)]">
-            <Binary className="size-4" />
-          </div>
-          <span className="font-semibold tracking-tight">DSA Tracker</span>
+          <Logo size="sm" />
           <div className="flex-1" />
           <ThemeToggle />
           <Link href="/signin">
