@@ -2,7 +2,17 @@
 
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useCallback, useEffect, useState, useTransition } from "react";
-import { Search, X, SlidersHorizontal, Star, LayoutGrid, List, Loader2 } from "lucide-react";
+import {
+  Search,
+  X,
+  SlidersHorizontal,
+  Star,
+  LayoutGrid,
+  List,
+  ListChecks,
+  Library,
+  Loader2,
+} from "lucide-react";
 import { Button, Input, Select, Badge } from "@/components/ui/primitives";
 import { cn } from "@/lib/utils";
 
@@ -11,6 +21,7 @@ type Option = { name: string; slug: string; _count: { problems: number } };
 export function ProblemFiltersBar({
   options,
   total,
+  scope,
 }: {
   options: {
     topics: Option[];
@@ -19,6 +30,8 @@ export function ProblemFiltersBar({
     sheets: { name: string; slug: string; description: string | null }[];
   };
   total: number;
+  /** Which half of the catalogue is being shown — see ProblemFilters.scope. */
+  scope: "curated" | "all";
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -211,6 +224,23 @@ export function ProblemFiltersBar({
             <Star className={cn("size-4", bookmarked && "fill-current")} />
             Bookmarked
           </Button>
+
+          <div className="flex items-center gap-1 rounded-lg border border-[var(--border)] p-0.5">
+            <GroupButton
+              active={scope === "curated"}
+              onClick={() => setParam({ scope: null })}
+              icon={ListChecks}
+            >
+              Curated
+            </GroupButton>
+            <GroupButton
+              active={scope === "all"}
+              onClick={() => setParam({ scope: "all" })}
+              icon={Library}
+            >
+              All LeetCode
+            </GroupButton>
+          </div>
 
           <div className="ml-auto flex items-center gap-1 rounded-lg border border-[var(--border)] p-0.5">
             <GroupButton active={!group} onClick={() => setParam({ group: null })} icon={List}>

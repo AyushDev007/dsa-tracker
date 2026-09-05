@@ -28,6 +28,8 @@ type BuiltProblem = {
   acceptance: number;
   isPremium: boolean;
   order: number;
+  /** "curated" | "derived" — see data/taxonomy.ts. */
+  taxonomy: string;
 };
 
 const slugify = (s: string) =>
@@ -142,70 +144,146 @@ async function main() {
   console.log(`  taxonomy: ${TOPICS.length} topics, ${PATTERNS.length} patterns, ${SHEETS.length} sheets, ${companyNames.length} companies`);
 
   // ── problems ──────────────────────────────────────────────────────────────
-  let n = 0;
+  //
+  // The catalogue is ~3,300 rows, so this is written in batches rather than as
+  // a per-problem upsert. The original loop issued about five queries per
+  // problem; against a pooled Neon connection that is roughly 16,000 round
+  // trips on every single deploy, which turns `vercel build` into a timeout
+  // risk. Batched, it is a handful of statements.
+  const existing = await prisma.problem.findMany({
+    select: {
+      id: true,
+      slug: true,
+      title: true,
+      leetcodeId: true,
+      url: true,
+      difficulty: true,
+      acceptance: true,
+      isPremium: true,
+      position: true,
+      topicId: true,
+      patternId: true,
+      taxonomySource: true,
+    },
+  });
+  const existingBySlug = new Map(existing.map((p) => [p.slug, p]));
+
+  const toCreate: {
+    slug: string;
+    title: string;
+    leetcodeId: number;
+    url: string;
+    difficulty: string;
+    acceptance: number;
+    isPremium: boolean;
+    position: number;
+    topicId: string;
+    patternId: string;
+    taxonomySource: string;
+  }[] = [];
+  const toUpdate: { slug: string; data: Record<string, unknown> }[] = [];
+
   for (const p of problems) {
     const topicId = topicIds.get(p.topic);
     const patternId = patternIds.get(p.pattern);
     if (!topicId || !patternId) throw new Error(`unmapped taxonomy for ${p.slug}`);
 
-    const problem = await prisma.problem.upsert({
-      where: { slug: p.slug },
-      update: {
-        title: p.title,
-        leetcodeId: p.leetcodeId,
-        url: p.url,
-        difficulty: p.difficulty,
-        acceptance: p.acceptance,
-        isPremium: p.isPremium,
-        position: p.order,
-        topicId,
-        patternId,
-      },
-      create: {
-        slug: p.slug,
-        title: p.title,
-        leetcodeId: p.leetcodeId,
-        url: p.url,
-        difficulty: p.difficulty,
-        acceptance: p.acceptance,
-        isPremium: p.isPremium,
-        position: p.order,
-        topicId,
-        patternId,
-      },
-    });
+    const row = {
+      title: p.title,
+      leetcodeId: p.leetcodeId,
+      url: p.url,
+      difficulty: p.difficulty,
+      acceptance: p.acceptance,
+      isPremium: p.isPremium,
+      position: p.order,
+      topicId,
+      patternId,
+      taxonomySource: p.taxonomy,
+    };
 
-    // Relations are fully rebuilt so removing a tag in curated.ts actually
-    // removes it from the database.
-    await prisma.problemCompany.deleteMany({ where: { problemId: problem.id } });
-    if (p.companies.length) {
-      await prisma.problemCompany.createMany({
-        data: p.companies.map((c) => ({ problemId: problem.id, companyId: companyIds.get(c)! })),
-        skipDuplicates: true,
-      });
+    const prev = existingBySlug.get(p.slug);
+    if (!prev) {
+      toCreate.push({ slug: p.slug, ...row });
+      continue;
     }
 
-    await prisma.sheetProblem.deleteMany({ where: { problemId: problem.id } });
-    if (p.sheets.length) {
-      await prisma.sheetProblem.createMany({
-        data: p.sheets.map((s) => ({
-          sheetId: sheetIds.get(s)!,
-          problemId: problem.id,
-          position: p.order,
-        })),
-        skipDuplicates: true,
-      });
-    }
-
-    if (++n % 50 === 0) console.log(`  ${n}/${problems.length}`);
+    // Only write rows that actually changed. On a re-seed with no upstream
+    // changes this makes the whole step a single SELECT.
+    const changed = (Object.keys(row) as (keyof typeof row)[]).some(
+      (k) => prev[k as keyof typeof prev] !== row[k],
+    );
+    if (changed) toUpdate.push({ slug: p.slug, data: row });
   }
 
-  // Drop catalogue rows that are no longer in the curated list.
+  for (let i = 0; i < toCreate.length; i += 500) {
+    await prisma.problem.createMany({ data: toCreate.slice(i, i + 500), skipDuplicates: true });
+    console.log(`  created ${Math.min(i + 500, toCreate.length)}/${toCreate.length}`);
+  }
+
+  for (let i = 0; i < toUpdate.length; i += 200) {
+    await prisma.$transaction(
+      toUpdate
+        .slice(i, i + 200)
+        .map((u) => prisma.problem.update({ where: { slug: u.slug }, data: u.data })),
+    );
+    console.log(`  updated ${Math.min(i + 200, toUpdate.length)}/${toUpdate.length}`);
+  }
+  if (!toCreate.length && !toUpdate.length) console.log("  problems already up to date");
+
+  // ── sheet & company links ────────────────────────────────────────────────
+  // Only curated problems carry sheets or companies, so this touches ~311 rows
+  // rather than the whole catalogue.
+  const ids = new Map(
+    (await prisma.problem.findMany({ select: { id: true, slug: true } })).map((p) => [
+      p.slug,
+      p.id,
+    ]),
+  );
+  const linked = problems.filter((p) => p.sheets.length || p.companies.length);
+  const linkedIds = linked.map((p) => ids.get(p.slug)!).filter(Boolean);
+
+  // Relations are fully rebuilt so removing a tag in curated.ts actually
+  // removes it from the database.
+  await prisma.problemCompany.deleteMany({ where: { problemId: { in: linkedIds } } });
+  await prisma.sheetProblem.deleteMany({ where: { problemId: { in: linkedIds } } });
+
+  const companyLinks = linked.flatMap((p) =>
+    p.companies.map((c) => ({ problemId: ids.get(p.slug)!, companyId: companyIds.get(c)! })),
+  );
+  const sheetLinks = linked.flatMap((p) =>
+    p.sheets.map((s) => ({
+      sheetId: sheetIds.get(s)!,
+      problemId: ids.get(p.slug)!,
+      position: p.order,
+    })),
+  );
+
+  for (let i = 0; i < companyLinks.length; i += 1000) {
+    await prisma.problemCompany.createMany({
+      data: companyLinks.slice(i, i + 1000),
+      skipDuplicates: true,
+    });
+  }
+  for (let i = 0; i < sheetLinks.length; i += 1000) {
+    await prisma.sheetProblem.createMany({
+      data: sheetLinks.slice(i, i + 1000),
+      skipDuplicates: true,
+    });
+  }
+  console.log(`  linked ${sheetLinks.length} sheet entries, ${companyLinks.length} company tags`);
+
+  // Drop catalogue rows that are no longer in the list. Cascades clear the
+  // relations; a user's progress on a withdrawn problem goes with it, which is
+  // correct — the problem no longer exists to be solved.
   const keep = problems.map((p) => p.slug);
   const removed = await prisma.problem.deleteMany({ where: { slug: { notIn: keep } } });
-  if (removed.count) console.log(`  removed ${removed.count} problem(s) no longer curated`);
+  if (removed.count) console.log(`  removed ${removed.count} problem(s) no longer in the catalogue`);
 
-  console.log(`✓ seed complete — ${await prisma.problem.count()} problems in the database`);
+  const total = await prisma.problem.count();
+  const derived = await prisma.problem.count({ where: { taxonomySource: "derived" } });
+  console.log(
+    `✓ seed complete — ${total} problems (${total - derived} curated taxonomy, ${derived} derived)`,
+  );
 }
 
 main()

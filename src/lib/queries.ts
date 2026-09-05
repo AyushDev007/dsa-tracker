@@ -14,6 +14,14 @@ export type ProblemFilters = {
   bookmarked?: boolean;
   sort?: string;
   page?: number;
+  /**
+   * "curated" — only the 311 problems with a hand-written topic/pattern.
+   * "all"     — the full free LeetCode catalogue (~3,268), whose taxonomy is
+   *             mostly derived from LeetCode's own tags.
+   * Defaults to "curated": the full list is there when you want it, but it is
+   * ten times the size and a study plan is not "solve everything".
+   */
+  scope?: "curated" | "all";
   /** Skip pagination — the grouped views need every match, not one page. */
   all?: boolean;
 };
@@ -37,6 +45,8 @@ const DIFFICULTY_RANK: Record<string, number> = { EASY: 0, MEDIUM: 1, HARD: 2 };
 
 export async function getProblems(userId: string, filters: ProblemFilters) {
   const where: Prisma.ProblemWhereInput = {};
+
+  if ((filters.scope ?? "curated") === "curated") where.taxonomySource = "curated";
 
   if (filters.q) {
     const q = filters.q.trim();
@@ -103,6 +113,7 @@ export async function getProblems(userId: string, filters: ProblemFilters) {
     difficulty: p.difficulty,
     acceptance: p.acceptance,
     isPremium: p.isPremium,
+    taxonomySource: p.taxonomySource,
     topic: p.topic,
     pattern: p.pattern,
     companies: p.companies.map((c) => c.company),
@@ -127,16 +138,23 @@ export async function getProblems(userId: string, filters: ProblemFilters) {
 
 export type ProblemListItem = Awaited<ReturnType<typeof getProblems>>["problems"][number];
 
-/** Filter options with per-option counts, so the UI can show "Graphs · 34". */
-export async function getFilterOptions() {
+/**
+ * Filter options with per-option counts, so the UI can show "Graphs · 34".
+ *
+ * The counts follow the current scope. Showing "Graphs · 234" beside a curated
+ * list holding 34 graph problems would be a filter that lies about its result.
+ */
+export async function getFilterOptions(scope: "curated" | "all" = "curated") {
+  const problems = scope === "curated" ? { where: { taxonomySource: "curated" } } : true;
+
   const [topics, patterns, companies, sheets] = await Promise.all([
     prisma.topic.findMany({
       orderBy: { position: "asc" },
-      select: { name: true, slug: true, _count: { select: { problems: true } } },
+      select: { name: true, slug: true, _count: { select: { problems } } },
     }),
     prisma.pattern.findMany({
       orderBy: { position: "asc" },
-      select: { name: true, slug: true, description: true, _count: { select: { problems: true } } },
+      select: { name: true, slug: true, description: true, _count: { select: { problems } } },
     }),
     prisma.company.findMany({
       orderBy: { name: "asc" },

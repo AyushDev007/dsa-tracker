@@ -107,7 +107,8 @@ whichever providers are configured.
 
 3. Deploy. The build runs
    `prisma generate && prisma migrate deploy && tsx prisma/seed.ts && next build`,
-   so the schema is created and all 311 problems are loaded on the first deploy.
+   so the schema is created and the full problem catalogue is loaded on the first
+   deploy.
    Expect 2–3 minutes.
 
 ---

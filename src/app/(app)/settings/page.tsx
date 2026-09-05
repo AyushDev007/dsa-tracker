@@ -66,6 +66,11 @@ export default async function SettingsPage() {
             contestRating: sync.contestRating,
             lastSyncedAt: sync.lastSyncedAt.toISOString(),
             lastError: sync.lastError,
+            // Only ever the *presence* of a cookie crosses to the client.
+            hasCookie: Boolean(sync.sessionCookie),
+            cookieInvalid: Boolean(sync.cookieInvalidAt),
+            fullSyncAt: sync.fullSyncAt?.toISOString() ?? null,
+            fullSyncSolved: sync.fullSyncSolved,
           }
         }
       />

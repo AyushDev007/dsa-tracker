@@ -61,6 +61,7 @@ export default async function SheetPage({ params }: { params: Promise<{ slug: st
     difficulty: sp.problem.difficulty,
     acceptance: sp.problem.acceptance,
     isPremium: sp.problem.isPremium,
+    taxonomySource: sp.problem.taxonomySource,
     topic: sp.problem.topic,
     pattern: sp.problem.pattern,
     companies: sp.problem.companies.map((c) => c.company),

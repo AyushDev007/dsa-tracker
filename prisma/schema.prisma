@@ -136,6 +136,12 @@ model Problem {
   isPremium  Boolean @default(false)
   /// Suggested study position inside its topic.
   position   Int    @default(999)
+  /// "curated"  — topic/pattern hand-assigned in data/curated.ts (311 problems)
+  /// "derived"  — inferred from LeetCode's own topic tags by data/taxonomy.ts
+  /// The catalogue holds every free LeetCode problem, but only the curated ones
+  /// carry a human's judgement about what technique they teach, and the UI says
+  /// so rather than presenting both as equally authoritative.
+  taxonomySource String @default("derived")
 
   topicId   String
   patternId String
@@ -151,6 +157,7 @@ model Problem {
   @@index([topicId])
   @@index([patternId])
   @@index([difficulty])
+  @@index([taxonomySource])
 }
 
 model ProblemCompany {
@@ -277,8 +284,18 @@ model ActivityDay {
   @@index([userId, day])
 }
 
-/// Cached result of the last LeetCode profile sync. Public data only — we never
-/// store credentials, so this can be refreshed from a username alone.
+/// Cached result of the last LeetCode sync.
+///
+/// Two modes, and the difference matters:
+///
+///   • Username only (public). Needs no credentials, but LeetCode's public feed
+///     hard-caps at the 20 most recent accepted submissions, so it can never
+///     backfill a solve history — only keep up with new ones.
+///   • Session cookie (full). The user pastes their own LEETCODE_SESSION cookie,
+///     which lets the problem list come back with each problem's real status, so
+///     every problem they have ever solved can be ticked. The cookie is a live
+///     credential: it is encrypted at rest with AUTH_SECRET (see src/lib/crypto.ts),
+///     never sent anywhere except leetcode.com, and never returned to the client.
 model LeetcodeSync {
   id       String @id @default(cuid())
   userId   String @unique
@@ -295,6 +312,25 @@ model LeetcodeSync {
   calendar Json?
   /// Slugs LeetCode reports as accepted, used to auto-mark tracker problems.
   solvedSlugs Json?
+
+  /// AES-256-GCM ciphertext of the user's LEETCODE_SESSION cookie, or null when
+  /// they have only linked a username. Never leaves the server in plaintext.
+  sessionCookie String? @db.Text
+  /// Matching csrftoken cookie. Not secret on its own, but LeetCode wants both.
+  csrfToken     String? @db.Text
+  /// When the cookie last failed authentication, so the UI can say "expired"
+  /// instead of silently degrading to the 20-item public feed.
+  cookieInvalidAt DateTime?
+
+  /// Last time a full (cookie-backed) status sweep completed.
+  fullSyncAt   DateTime?
+  /// How many problems the last full sweep found solved on LeetCode.
+  fullSyncSolved Int?
+  /// How many tracker problems the last sync newly ticked.
+  lastMarked   Int @default(0)
+
+  /// Whether the app should sync in the background when the dashboard is opened.
+  autoSync     Boolean @default(true)
 
   lastSyncedAt DateTime @default(now())
   lastError    String?

@@ -51,6 +51,14 @@ export const TOPICS = [
   "Bit Manipulation",
   "Math & Geometry",
   "Design",
+  // ── Added when the catalogue grew from the curated 311 to the full free
+  // LeetCode set. Every problem needs a topic (the column is non-null), and
+  // these name the areas the hand-curated list never had to cover.
+  "Segment Tree & BIT",
+  "Simulation",
+  "Database (SQL)",
+  "Concurrency & Shell",
+  "JavaScript",
 ] as const;
 export type Topic = (typeof TOPICS)[number];
 
@@ -100,6 +108,23 @@ export const PATTERNS = [
   "Divide & Conquer",
   "String Simulation",
   "Data Structure Design",
+  // ── Added alongside the extra topics above, for the same reason.
+  "Monotonic Queue",
+  "Segment Tree / Fenwick",
+  "Sorting",
+  "Counting / Enumeration",
+  "String Matching",
+  "Game Theory",
+  "Combinatorics",
+  "Sweep Line",
+  "Memoization",
+  "Bitmask DP",
+  "Simulation",
+  "Array Manipulation",
+  "SQL Query",
+  "Concurrency Primitives",
+  "Shell Scripting",
+  "JavaScript / Async",
 ] as const;
 export type Pattern = (typeof PATTERNS)[number];
 
