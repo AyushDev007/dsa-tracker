@@ -17,7 +17,11 @@ export default async function ProblemsPage({ searchParams }: { searchParams: Sea
   if (!session?.user?.id) redirect("/signin");
 
   const sp = await searchParams;
+  // The catalogue holds every free LeetCode problem, but the curated 311 are
+  // the study plan, so they stay the default view.
+  const scope = one(sp.scope) === "all" ? "all" : "curated";
   const filters: ProblemFilters = {
+    scope,
     q: one(sp.q),
     topic: one(sp.topic),
     pattern: one(sp.pattern),
@@ -35,7 +39,7 @@ export default async function ProblemsPage({ searchParams }: { searchParams: Sea
     // Grouped views need every match so each group is complete; the flat list
     // is paginated.
     getProblems(session.user.id, { ...filters, all: Boolean(groupBy) }),
-    getFilterOptions(),
+    getFilterOptions(scope),
   ]);
 
   return (
@@ -43,13 +47,20 @@ export default async function ProblemsPage({ searchParams }: { searchParams: Sea
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Problems</h1>
         <p className="mt-1 text-sm text-[var(--fg-muted)]">
-          {total} curated problem{total === 1 ? "" : "s"}
+          {total} {scope === "curated" ? "curated" : "LeetCode"} problem{total === 1 ? "" : "s"}
           {groupBy ? ` grouped by ${groupBy}` : ""} — filter by topic, by pattern, or by the
           company that asks them.
+          {scope === "all" ? (
+            <>
+              {" "}
+              Topics and patterns outside the curated set are derived from LeetCode&rsquo;s own
+              tags, so treat them as a reasonable guess rather than a considered one.
+            </>
+          ) : null}
         </p>
       </div>
 
-      <ProblemFiltersBar options={options} total={total} />
+      <ProblemFiltersBar options={options} total={total} scope={scope} />
 
       {groupBy ? (
         <GroupedProblems problems={problems} groupBy={groupBy as "topic" | "pattern"} />

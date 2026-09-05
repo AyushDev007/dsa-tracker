@@ -1,8 +1,9 @@
 # DSA Tracker
 
-A full-stack interview-prep tracker for 311 curated LeetCode problems, organised
-**by topic and by pattern**, with spaced-repetition revision, notes, a solve
-heatmap, and LeetCode sync.
+A full-stack interview-prep tracker for the whole free LeetCode catalogue —
+3,268 problems — with a hand-curated 311-problem study plan layered on top,
+organised **by topic and by pattern**, with spaced-repetition revision, notes, a
+solve heatmap, and LeetCode sync.
 
 Built with Next.js 15 (App Router), TypeScript, Tailwind v4, Prisma + PostgreSQL
 and Auth.js v5.
@@ -117,7 +118,7 @@ appear on `/signin` automatically once their variables are set.
 
 | Feature | Where |
 |---|---|
-| **Browse by topic or pattern** — 22 topics, 45 patterns, filter/search/sort, or group into collapsible accordions with per-group progress | `/problems` |
+| **Browse by topic or pattern** — 27 topics, 61 patterns, filter/search/sort, or group into collapsible accordions with per-group progress. Toggle between the curated 311 and all 3,268 | `/problems` |
 | **Company filters** — narrow to what Amazon, Google, Meta… tend to ask | `/problems?company=…` |
 | **Spaced repetition** — rate a solve *struggled / ok / confident* and it reschedules on a 1→3→7→21→45→90 day ladder | `/revision` |
 | **Notes** — markdown write-up plus a syntax-highlighted solution and complexity per problem, searchable across everything | `/problems/[slug]`, `/notes` |
@@ -126,42 +127,85 @@ appear on `/signin` automatically once their variables are set.
 | **Daily goal ring** | `/dashboard` |
 | **Analytics** — weak-area detection, coverage by topic and pattern, weekly trend, median solve time, first-try and hint rates | `/analytics` |
 | **Curated sheets** — Blind 75, NeetCode 150, Striver SDE Sheet, Grind 75, layered over the same problems | `/sheets` |
-| **LeetCode sync** — solve counts, contest rating, submission calendar, and auto-marking from recent accepted submissions | `/settings` |
+| **LeetCode sync** — solve counts, contest rating, submission calendar, and auto-marking of everything you have solved | `/settings` |
 | **Public profile** — opt-in read-only page with heatmap and stats | `/u/[handle]` |
 | **CSV export + reset** | `/settings` |
 
 ### On the LeetCode integration
 
-LeetCode has no official public API. This uses the same unauthenticated GraphQL
-endpoint the profile page itself calls, which means:
+LeetCode has no official public API, so this talks to the same GraphQL endpoint
+the site's own pages call. It runs in one of two modes, and the difference is
+worth understanding before you rely on it.
 
-- It needs **only a username** — no password, no session cookie, nothing stored
-  that could compromise the account.
-- It can read solve counts, the submission calendar, contest rating, and the
-  **~20 most recent** accepted submissions.
-- It **cannot** read your full solved list or your submitted source code — those
-  sit behind the session cookie, which this app deliberately does not touch.
+**Username only (the default).** Needs nothing but your handle — no password, no
+cookie, nothing stored that could compromise the account. It reads solve counts,
+the submission calendar, contest rating, and your accepted submissions. But
+LeetCode caps that last feed at your **20 most recent** solves, and the cap is
+enforced server-side: asking for 100 or 500 returns exactly 20. Verified against
+live profiles.
 
-So auto-marking catches up gradually as you solve, rather than backfilling
-everything at once. It never un-marks anything. Because the endpoint is
+That cap has a consequence people hit immediately: **this mode can keep up with
+new solves, but it can never backfill a history.** If you have 800 problems
+solved on LeetCode and you link your username, 20 of them get ticked.
+
+**Session cookie (opt-in, in Settings).** You paste your own `LEETCODE_SESSION`
+cookie. The problem list then comes back with each problem's real status, so
+everything you have ever solved gets ticked — dated by LeetCode's own submission
+timestamps, so a backfill lands on the days you actually solved them instead of
+dropping a year of history onto today's heatmap.
+
+That cookie is a live credential: anyone holding it can act as you on
+leetcode.com until it expires. So:
+
+- It is encrypted at rest with AES-256-GCM, keyed from `AUTH_SECRET`
+  (`src/lib/crypto.ts`), and never returned to the browser — the UI only ever
+  learns whether *a* cookie exists.
+- It is verified against LeetCode before being stored, so a bad paste fails
+  loudly instead of silently doing nothing.
+- It is sent only to leetcode.com, over HTTPS, and never logged.
+- Only paste it into an instance you control. Signing out of LeetCode
+  invalidates it whenever you want it gone; "Forget cookie" drops it here.
+
+Neither mode ever un-marks anything: LeetCode not reporting a problem is not
+evidence you did not solve it. Syncing runs **automatically in the background**
+while the app is open (throttled server-side to once every 15 minutes), so new
+solves appear without anyone pressing a button. Because the endpoint is
 unofficial it can change without notice; every call is defensive and a failure
 degrades to "sync unavailable" rather than breaking a page.
 
 ### On the problem data
 
-`data/curated.ts` is hand-maintained: which problems are included, their topic,
-pattern, sheet memberships and company tags. Everything else — exact title,
-question number, difficulty, acceptance rate, premium flag — is pulled from
-LeetCode's public problem list by a build script and written to
-`data/problems.json`, which the seed reads:
+The catalogue is every **free** problem on LeetCode — 3,268 of the 4,042 total.
+The 774 premium-only problems are left out, because tracking a problem you
+cannot open is noise. The eight exceptions are curated problems that have since
+gone premium (`alien-dictionary`, `meeting-rooms`, …); they stay, flagged, so
+Blind 75 and NeetCode 150 do not quietly develop holes.
+
+Taxonomy comes from two places, and the app distinguishes them:
+
+- **Curated (311 problems).** `data/curated.ts` is hand-maintained — topic,
+  pattern, sheet membership, company tags, study order. This is the default view
+  on `/problems`, because a study plan is not "solve everything".
+- **Derived (the rest).** `data/taxonomy.ts` maps LeetCode's own `topicTags`
+  onto the same 27 topics and 61 patterns through an ordered rule table, most
+  specific rule first — so a problem tagged both `array` and `union-find` is
+  filed under Union Find, not arrays. Deterministic and auditable: the build
+  prints every rule that fired and how often, so a bad rule shows up as an
+  implausible bucket rather than silently mislabelling 400 problems.
+
+A derived pattern is a reasonable guess, not a considered one, and the UI says
+so rather than presenting both as equally authoritative.
+
+Titles, question numbers, difficulty, acceptance rate and premium flags all come
+from LeetCode's public list via the build script:
 
 ```bash
 npm run problems:build
 ```
 
 The generated JSON is committed, so seeding and deploys never need network
-access. Re-run it only after editing the curated list; it validates every slug
-against LeetCode and fails loudly on a typo.
+access. Re-run it after editing the curated list, or periodically to pick up
+newly published problems; it fails loudly if a curated slug no longer exists.
 
 Company tags are indicative — LeetCode's real company data is paywalled and
 crowd-sourced. Treat them as "commonly reported", not gospel.
@@ -206,8 +250,9 @@ production regardless, but leaving it out keeps the intent clear.
 
 **5. Deploy.** The build command is
 `prisma generate && prisma migrate deploy && tsx prisma/seed.ts && next build`,
-so the schema is migrated and all 311 problems are seeded automatically on every
-deploy. The seed is idempotent — it upserts by slug and never touches user data.
+so the schema is migrated and the whole catalogue is seeded automatically on
+every deploy. The seed is idempotent and batched — a re-seed with no upstream
+changes is a single SELECT, and it never touches user data.
 
 ---
 

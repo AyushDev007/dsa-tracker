@@ -7,7 +7,8 @@ import { prisma } from "@/lib/prisma";
 import { scheduleNextReview } from "@/lib/revision";
 import { toUtcDay, slugify } from "@/lib/utils";
 import { STATUSES, LANGUAGES } from "@/lib/constants";
-import { fetchLeetCodeProfile } from "@/lib/leetcode";
+import { fetchLeetCodeProfile, fetchSolvedSlugs } from "@/lib/leetcode";
+import { encrypt, decrypt } from "@/lib/crypto";
 
 async function requireUser() {
   const session = await auth();
@@ -345,12 +346,183 @@ export async function updateSettings(input: z.infer<typeof settingsSchema>) {
 /* ───────────────────────────────────────────────────────── leetcode sync ── */
 
 /**
- * Pulls the user's public LeetCode profile and folds it into the tracker:
- * stats, the real submission calendar, and — optionally — auto-marking every
- * tracked problem LeetCode says is accepted.
+ * How long a background sync waits before it will run again. The dashboard asks
+ * for a sync on load, so without this every navigation would hit LeetCode.
+ */
+const AUTO_SYNC_INTERVAL_MS = 15 * 60 * 1000;
+
+const cookieSchema = z.object({
+  session: z.string().trim().min(20, "That doesn't look like a LEETCODE_SESSION value."),
+  csrf: z.string().trim().max(200).optional().nullable(),
+});
+
+/**
+ * Stores the user's LeetCode session cookie so the full sync can run.
+ *
+ * The cookie is encrypted before it is written and is never read back to the
+ * client — `getLeetCodeStatus` reports only whether one is present and working.
+ */
+export async function saveLeetCodeCookie(input: z.infer<typeof cookieSchema>) {
+  const userId = await requireUser();
+  const parsed = cookieSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false as const, error: parsed.error.issues[0]?.message ?? "Invalid cookie." };
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { leetcodeUsername: true },
+  });
+
+  // Verify before storing: a cookie that doesn't authenticate is worse than no
+  // cookie, because the UI would promise a full sync it can't deliver.
+  const probe = await fetchSolvedSlugs({
+    session: parsed.data.session,
+    csrf: parsed.data.csrf ?? null,
+  });
+  if (!probe.ok) return { ok: false as const, error: probe.error };
+
+  await prisma.leetcodeSync.upsert({
+    where: { userId },
+    update: {
+      sessionCookie: encrypt(parsed.data.session),
+      csrfToken: parsed.data.csrf ? encrypt(parsed.data.csrf) : null,
+      cookieInvalidAt: null,
+      lastError: null,
+    },
+    create: {
+      userId,
+      username: user?.leetcodeUsername?.trim() || "",
+      sessionCookie: encrypt(parsed.data.session),
+      csrfToken: parsed.data.csrf ? encrypt(parsed.data.csrf) : null,
+    },
+  });
+
+  revalidatePath("/settings");
+  return { ok: true as const, solvedOnLeetCode: probe.slugs.length };
+}
+
+/** Forgets the stored cookie. The username-only public sync keeps working. */
+export async function clearLeetCodeCookie() {
+  const userId = await requireUser();
+  await prisma.leetcodeSync.updateMany({
+    where: { userId },
+    data: { sessionCookie: null, csrfToken: null, cookieInvalidAt: null, fullSyncAt: null },
+  });
+  revalidatePath("/settings");
+  return { ok: true as const };
+}
+
+/** Turns background syncing on or off without unlinking anything. */
+export async function setLeetCodeAutoSync(enabled: boolean) {
+  const userId = await requireUser();
+  await prisma.leetcodeSync.updateMany({ where: { userId }, data: { autoSync: enabled } });
+  revalidatePath("/settings");
+  return { ok: true as const };
+}
+
+/**
+ * Marks tracker problems solved from a list of LeetCode slugs.
+ *
+ * Two things this deliberately does not do:
+ *
+ *   • It never un-marks. LeetCode not reporting a problem is not evidence you
+ *     didn't solve it — you may have solved it in a notebook, or LeetCode may
+ *     simply have paged us badly.
+ *   • It never overwrites an existing SOLVED row's date, so a re-sync doesn't
+ *     rewrite the history it already imported.
+ *
+ * `solvedAt` carries LeetCode's own submission timestamps where it exposed
+ * them, so a backfill lands on the day it was actually solved rather than
+ * dropping a thousand solves onto today's heatmap.
+ */
+async function markSolvedFromLeetCode(
+  userId: string,
+  slugs: string[],
+  solvedAt: Record<string, number> = {},
+) {
+  if (!slugs.length) return { marked: 0, byDay: new Map<number, number>() };
+
+  const problems = await prisma.problem.findMany({
+    where: { slug: { in: slugs } },
+    select: { id: true, slug: true },
+  });
+  if (!problems.length) return { marked: 0, byDay: new Map<number, number>() };
+
+  const existing = await prisma.progress.findMany({
+    where: { userId, problemId: { in: problems.map((p) => p.id) } },
+    select: { problemId: true, status: true },
+  });
+  const statusById = new Map(existing.map((p) => [p.problemId, p.status]));
+
+  const toCreate: { userId: string; problemId: string; status: string; solvedAt: Date }[] = [];
+  const toUpdate: { problemId: string; solvedAt: Date }[] = [];
+  const byDay = new Map<number, number>();
+
+  for (const problem of problems) {
+    if (statusById.get(problem.id) === "SOLVED") continue;
+    const when = solvedAt[problem.slug] ? new Date(solvedAt[problem.slug]) : new Date();
+
+    if (statusById.has(problem.id)) toUpdate.push({ problemId: problem.id, solvedAt: when });
+    else
+      toCreate.push({ userId, problemId: problem.id, status: "SOLVED", solvedAt: when });
+
+    const day = toUtcDay(when).getTime();
+    byDay.set(day, (byDay.get(day) ?? 0) + 1);
+  }
+
+  if (toCreate.length) await prisma.progress.createMany({ data: toCreate, skipDuplicates: true });
+
+  // Rows that already existed as TODO/ATTEMPTED are promoted one at a time —
+  // there are only ever a handful, and updateMany can't set a per-row date.
+  for (const row of toUpdate) {
+    await prisma.progress.update({
+      where: { userId_problemId: { userId, problemId: row.problemId } },
+      data: { status: "SOLVED", solvedAt: row.solvedAt },
+    });
+  }
+
+  return { marked: toCreate.length + toUpdate.length, byDay };
+}
+
+/** Folds imported solves into the heatmap on the days they actually happened. */
+async function recordImportedActivity(userId: string, byDay: Map<number, number>) {
+  for (const [ms, count] of byDay) {
+    const day = new Date(ms);
+    await prisma.activityDay.upsert({
+      where: { userId_day: { userId, day } },
+      update: { solved: { increment: count } },
+      create: { userId, day, solved: count },
+    });
+  }
+}
+
+/** Decrypts the stored credentials, or null if none are usable. */
+async function storedCredentials(userId: string) {
+  const row = await prisma.leetcodeSync.findUnique({
+    where: { userId },
+    select: { sessionCookie: true, csrfToken: true },
+  });
+  const session = decrypt(row?.sessionCookie);
+  if (!session) return null;
+  return { session, csrf: decrypt(row?.csrfToken) };
+}
+
+/**
+ * Pulls the user's LeetCode data and folds it into the tracker.
+ *
+ * Runs in one of two modes depending on what's linked:
+ *
+ *   • **full** — a session cookie is stored, so every problem LeetCode records
+ *     as accepted gets ticked, however long ago it was solved.
+ *   • **public** — username only. Stats and the submission calendar are exact,
+ *     but auto-marking sees only the 20 most recent accepted submissions,
+ *     because that is LeetCode's hard server-side cap.
  */
 export async function syncLeetCode(options: { autoMark?: boolean } = {}) {
   const userId = await requireUser();
+  const autoMark = options.autoMark ?? true;
+
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: { leetcodeUsername: true },
@@ -372,6 +544,47 @@ export async function syncLeetCode(options: { autoMark?: boolean } = {}) {
   }
 
   const p = result.profile;
+
+  // ── full sweep, when a session cookie is stored ──────────────────────────
+  let mode: "full" | "public" = "public";
+  let marked = 0;
+  let fullSyncSolved: number | null = null;
+  let cookieExpired = false;
+  let byDay = new Map<number, number>();
+
+  const creds = await storedCredentials(userId);
+  if (creds) {
+    const solved = await fetchSolvedSlugs(creds);
+    if (solved.ok) {
+      mode = "full";
+      fullSyncSolved = solved.slugs.length;
+      if (autoMark) {
+        const res = await markSolvedFromLeetCode(userId, solved.slugs, solved.solvedAt);
+        marked = res.marked;
+        byDay = res.byDay;
+      }
+    } else {
+      cookieExpired = Boolean(solved.expired);
+      if (cookieExpired) {
+        await prisma.leetcodeSync.updateMany({
+          where: { userId },
+          data: { cookieInvalidAt: new Date() },
+        });
+      }
+    }
+  }
+
+  // ── public feed: the fallback, and the top-up for the full mode ──────────
+  // Running it in full mode too costs nothing and catches a solve made in the
+  // seconds between the status sweep and now.
+  if (autoMark && mode === "public" && p.recentAcceptedSlugs.length) {
+    const res = await markSolvedFromLeetCode(userId, p.recentAcceptedSlugs);
+    marked = res.marked;
+    byDay = res.byDay;
+  }
+
+  if (byDay.size) await recordImportedActivity(userId, byDay);
+
   await prisma.leetcodeSync.upsert({
     where: { userId },
     update: {
@@ -384,8 +597,10 @@ export async function syncLeetCode(options: { autoMark?: boolean } = {}) {
       contestRating: p.contestRating,
       calendar: p.calendar,
       solvedSlugs: p.recentAcceptedSlugs,
+      lastMarked: marked,
       lastSyncedAt: new Date(),
-      lastError: null,
+      lastError: cookieExpired ? "Your LeetCode session cookie has expired." : null,
+      ...(mode === "full" ? { fullSyncAt: new Date(), fullSyncSolved } : {}),
     },
     create: {
       userId,
@@ -398,40 +613,51 @@ export async function syncLeetCode(options: { autoMark?: boolean } = {}) {
       contestRating: p.contestRating,
       calendar: p.calendar,
       solvedSlugs: p.recentAcceptedSlugs,
+      lastMarked: marked,
     },
   });
 
-  let marked = 0;
-  if (options.autoMark && p.recentAcceptedSlugs.length) {
-    const problems = await prisma.problem.findMany({
-      where: { slug: { in: p.recentAcceptedSlugs } },
-      select: { id: true },
-    });
-
-    const alreadySolved = new Set(
-      (
-        await prisma.progress.findMany({
-          where: { userId, status: "SOLVED", problemId: { in: problems.map((x) => x.id) } },
-          select: { problemId: true },
-        })
-      ).map((x) => x.problemId),
-    );
-
-    for (const problem of problems) {
-      if (alreadySolved.has(problem.id)) continue;
-      await prisma.progress.upsert({
-        where: { userId_problemId: { userId, problemId: problem.id } },
-        update: { status: "SOLVED", solvedAt: new Date() },
-        create: { userId, problemId: problem.id, status: "SOLVED", solvedAt: new Date() },
-      });
-      marked++;
-    }
-    if (marked) await bumpActivity(userId, { solved: marked });
-  }
-
   revalidateProgressViews();
   revalidatePath("/settings");
-  return { ok: true as const, profile: p, marked };
+  return { ok: true as const, profile: p, marked, mode, fullSyncSolved, cookieExpired };
+}
+
+/**
+ * Syncs only if the last sync is stale. Called from the app shell on navigation,
+ * which is what makes new solves appear without anyone pressing a button.
+ *
+ * Returns quietly rather than throwing: a background refresh must never be able
+ * to break the page that triggered it.
+ */
+export async function syncLeetCodeIfStale() {
+  try {
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) return { ok: false as const, skipped: "signed-out" as const };
+
+    const row = await prisma.leetcodeSync.findUnique({
+      where: { userId },
+      select: { autoSync: true, lastSyncedAt: true, cookieInvalidAt: true },
+    });
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { leetcodeUsername: true },
+    });
+    if (!user?.leetcodeUsername) return { ok: false as const, skipped: "not-linked" as const };
+
+    if (row && !row.autoSync) return { ok: false as const, skipped: "disabled" as const };
+    if (row && Date.now() - row.lastSyncedAt.getTime() < AUTO_SYNC_INTERVAL_MS) {
+      return { ok: false as const, skipped: "fresh" as const };
+    }
+
+    const res = await syncLeetCode({ autoMark: true });
+    return res.ok
+      ? { ok: true as const, marked: res.marked, mode: res.mode }
+      : { ok: false as const, skipped: "error" as const };
+  } catch {
+    return { ok: false as const, skipped: "error" as const };
+  }
 }
 
 /* ─────────────────────────────────────────────────────────────── export ─── */

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { AppShell } from "@/components/app-shell";
+import { LeetCodeAutoSync } from "@/components/leetcode-autosync";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
@@ -27,6 +28,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       }}
       dueCount={dueCount}
     >
+      {/* Pulls new LeetCode solves in the background — see the component. */}
+      <LeetCodeAutoSync />
       {children}
     </AppShell>
   );
